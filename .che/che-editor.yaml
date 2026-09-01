@@ -1,0 +1,10 @@
+# Default editor when this repo is opened in OpenShift Dev Spaces.
+# che-idea = JetBrains IntelliJ IDEA Community, run remotely and reachable
+# via JetBrains Gateway - no local install of the IDE backend needed.
+#
+# For Ultimate/Professional editions (GoLand, PyCharm Professional,
+# IntelliJ IDEA Ultimate) with your own JetBrains license, start the
+# workspace from the Dev Spaces Dashboard and pick the JetBrains IDE there
+# instead (uses the "OpenShift Dev Spaces" JetBrains Gateway plug-in) -
+# see README.md.
+id: che-incubator/che-idea/latest

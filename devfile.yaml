@@ -1,0 +1,71 @@
+schemaVersion: 2.2.0
+metadata:
+  name: dev-environment
+  displayName: Go, Python, Ansible & Terraform Dev Environment
+  description: >-
+    OpenShift Dev Spaces workspace for Go, Python, Ansible and Terraform
+    development. Pre-configured for corporate HTTP(S) proxies and for
+    remote JetBrains IDEs via JetBrains Gateway.
+  tags:
+    - Go
+    - Python
+    - Ansible
+    - Terraform
+    - JetBrains
+
+components:
+  - name: tools
+    container:
+      # Devfile-registry "Universal Developer Image": ships Go, Python3/pip,
+      # git and common CLI tooling out of the box. Ansible and Terraform are
+      # installed on first start by the setup-tools command below.
+      image: quay.io/devfile/universal-developer-image:ubi9-latest
+      memoryLimit: 6Gi
+      memoryRequest: 1Gi
+      cpuLimit: '4'
+      cpuRequest: '1'
+      mountSources: true
+      env:
+        # --- Corporate proxy ---
+        # Fill in your proxy URL (e.g. http://proxy.example.corp:3128).
+        # Leave empty if your cluster's CheCluster already injects a
+        # cluster-wide proxy into workspace pods - in that case these
+        # values are only needed for extra NO_PROXY entries.
+        - name: HTTP_PROXY
+          value: ''
+        - name: HTTPS_PROXY
+          value: ''
+        - name: NO_PROXY
+          value: 'localhost,127.0.0.1,.svc,.cluster.local'
+        - name: http_proxy
+          value: ''
+        - name: https_proxy
+          value: ''
+        - name: no_proxy
+          value: 'localhost,127.0.0.1,.svc,.cluster.local'
+        # --- Go ---
+        - name: GOPATH
+          value: /home/user/go
+        - name: GOPROXY
+          value: 'https://proxy.golang.org,direct'
+        - name: GOSUMDB
+          value: sum.golang.org
+        # --- Python / pip ---
+        - name: PIP_DEFAULT_TIMEOUT
+          value: '100'
+        # --- Terraform ---
+        # Pin a version, or leave empty to install the latest release.
+        - name: TERRAFORM_VERSION
+          value: '1.9.8'
+
+commands:
+  - id: setup-tools
+    exec:
+      component: tools
+      label: 'Configure proxy & install Ansible/Terraform'
+      workingDir: ${PROJECT_SOURCE}
+      commandLine: bash "${PROJECT_SOURCE}/.devspaces/setup-tools.sh"
+
+events:
+  postStart:
+    - setup-tools
