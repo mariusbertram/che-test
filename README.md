@@ -3,7 +3,8 @@
 Dieses Repository enthält eine [Devfile](https://devfile.io)-Konfiguration für
 **Red Hat OpenShift Dev Spaces 3.29.1** (Eclipse Che) mit Toolchain für **Go**,
 **Python**, **Ansible** und **Terraform**, inklusive Proxy-Konfiguration und
-Unterstützung für **remote JetBrains-IDEs** (JetBrains Gateway).
+ausgelegt auf **IntelliJ IDEA Ultimate als remote IDE** über JetBrains
+Gateway.
 
 ## Dateien
 
@@ -13,7 +14,7 @@ Unterstützung für **remote JetBrains-IDEs** (JetBrains Gateway).
 | `.devspaces/Dockerfile` | Custom Workspace-Image: UDI-Basis-Image + Ansible |
 | `.github/workflows/build-dev-image.yml` | Baut `.devspaces/Dockerfile` bei jeder Änderung automatisch und pusht nach GHCR |
 | `.devspaces/configure-proxy.sh` | Läuft beim Workspace-Start (`postStart`): richtet Proxy für git/pip ein |
-| `.che/che-editor.yaml` | Legt den Standard-Editor für dieses Repo fest (JetBrains IntelliJ IDEA Community, remote via Gateway) |
+| `.che/che-editor.yaml` | Legt den Standard-Editor für dieses Repo fest (che-code, dient nur als Andockpunkt für JetBrains Gateway – siehe unten) |
 
 ## Workspace-Image
 
@@ -69,61 +70,54 @@ Go (`GOPROXY`), Terraform (Provider-Downloads) und `ansible-galaxy` nutzen
 `HTTP_PROXY`/`HTTPS_PROXY` direkt über ihre HTTP-Clients – dafür ist keine
 zusätzliche Konfiguration nötig, solange die Env-Variablen gesetzt sind.
 
-## Remote JetBrains-IDE nutzen
+## Remote JetBrains-IDE (Ultimate)
 
-Es gibt zwei Wege – **wichtig:** nur einer davon deckt Go tatsächlich ab.
+Dieses Setup ist auf **IntelliJ IDEA Ultimate** ausgelegt (statt der
+kostenlosen Community-Edition), da nur Ultimate den Go-Plugin unterstützt –
+Community kann kein Go. Ultimate ist **kein Eintrag in `che-editor.yaml`**
+(die Che-Plugin-Registry kennt nur `che-code` und `che-idea`/Community);
+stattdessen verbindet sich eure lokal installierte, lizenzierte Ultimate
+per JetBrains Gateway mit dem Workspace. `.che/che-editor.yaml` setzt daher
+`che-code` als Basis-Editor – der läuft nur als Andockpunkt, entwickelt wird
+in Ultimate.
 
-### 1. Standard: IntelliJ IDEA Community (sofort einsatzbereit, kostenlos)
+**Voraussetzung:** gültige JetBrains-Lizenz für IntelliJ IDEA Ultimate
+(oder All Products Pack), aktiviert lokal in Gateway/Toolbox – das ist reine
+Client-seitige Lizenzierung, im Workspace-Image steckt keine Lizenz.
 
-`.che/che-editor.yaml` setzt `che-incubator/che-idea/latest` als Editor.
-Beim Öffnen des Workspace startet automatisch eine remote laufende
-IntelliJ IDEA Community, die per JetBrains Gateway von eurem lokalen Rechner
-aus verbunden wird.
-
-**Plugins werden hier nicht über das Devfile vorinstalliert** – Eclipse Che
-hat das Feature für Nicht-VS-Code-Editoren wieder entfernt (nur
-`.vscode/extensions.json` funktioniert noch, und das nur für den che-code/VS
-Code-Editor). Plugins müssen einmalig manuell über
-**Settings → Plugins → Marketplace** in der IDE installiert werden; sie
-bleiben danach erhalten, solange der Workspace-Storage persistent ist
-(Standard: per-workspace/per-user PVC).
-
-Empfohlene Marketplace-Plugins:
-- **Python**: [Python Community Edition](https://plugins.jetbrains.com/plugin/7322-python-community-edition) – funktioniert in Community
-- **Ansible**: [Ansible Support](https://plugins.jetbrains.com/plugin/15704-ansible-support) oder [Ansible](https://plugins.jetbrains.com/plugin/14893-ansible) – funktioniert in Community
-- **Terraform/HCL**: [HashiCorp Terraform / HCL](https://plugins.jetbrains.com/plugin/7808-hcl-language-support) – Kompatibilität mit Community auf der Plugin-Seite prüfen, teils Ultimate-only
-- **Go**: **kein offizielles Go-Plugin für IntelliJ IDEA Community** – der
-  JetBrains-Go-Support ist exklusiv an GoLand bzw. IDEA Ultimate gebunden.
-  Für Go-Entwicklung ist Weg 2 notwendig.
-
-### 2. Ultimate/Professional-Editionen inkl. Go (eigene JetBrains-Lizenz nötig)
-
-Für vollständige Sprach-Unterstützung inklusive Go (z. B. IntelliJ IDEA
-Ultimate mit nativer Go-, Python-, Ansible- und Terraform-Integration, oder
-GoLand/PyCharm Professional direkt):
+### Verbinden
 
 1. [JetBrains Gateway](https://www.jetbrains.com/remote-development/gateway/)
    lokal installieren.
-2. In Gateway das Plugin **"OpenShift Dev Spaces"**
-   ([redhat-developer/devspaces-gateway-plugin](https://github.com/redhat-developer/devspaces-gateway-plugin))
-   aus dem JetBrains-Marketplace installieren.
-3. Workspace in der Dev Spaces Dashboard starten und dort statt IntelliJ IDEA
-   Community die gewünschte JetBrains-IDE (Ultimate/Professional) auswählen.
-   Dev Spaces lädt das passende IDE-Backend herunter und startet es headless
-   im Workspace; über Gateway verbindet sich lokal ein Thin-Client.
+2. Workspace in der Dev Spaces Dashboard aus diesem Repo starten (Editor:
+   che-code, per `che-editor.yaml`).
+3. Zwei gleichwertige Wege, Gateway mit dem Workspace zu verbinden:
+   - **Über die Dashboard**: laufenden Workspace öffnen → Button
+     **„Open Gateway"** → Gateway startet lokal und fragt nach der
+     gewünschten IDE → **IntelliJ IDEA Ultimate** wählen.
+   - **Direkt aus Gateway**: in Gateway zusätzlich das Plugin
+     **„OpenShift Dev Spaces"**
+     ([redhat-developer/devspaces-gateway-plugin](https://github.com/redhat-developer/devspaces-gateway-plugin))
+     installieren, damit lässt sich der Workspace auch ohne Umweg über die
+     Dashboard direkt aus Gateway heraus auswählen.
+4. Gateway lädt das Ultimate-Backend automatisch in den Workspace-Container
+   (nach `$HOME`, bleibt bei persistentem Storage über Neustarts erhalten)
+   und öffnet lokal den Thin-Client.
 
-Eine gültige JetBrains-Lizenz für die gewählte Ultimate/Professional-IDE ist
-Voraussetzung. Auch hier werden zusätzliche Plugins (Ansible, Terraform/HCL)
-einmalig manuell über den Marketplace installiert; Go und Python sind in
-Ultimate/GoLand/PyCharm bereits eingebaut.
+### Plugins
 
-**Empfehlung für euren Stack (Go + Python + Ansible + Terraform):** IntelliJ
-IDEA Ultimate über Weg 2 – deckt alle vier Sprachen in einer IDE ab.
+Go und Python sind in Ultimate bereits eingebaut. Ansible und Terraform/HCL
+gibt es nur als Marketplace-Plugins – ein Vorinstallieren über das Devfile
+ist für JetBrains-Editoren nicht (mehr) vorgesehen. Einmalig manuell über
+**Settings → Plugins → Marketplace** installieren, bleibt danach bei
+persistentem Storage erhalten:
+- [Ansible Support](https://plugins.jetbrains.com/plugin/15704-ansible-support) oder [Ansible](https://plugins.jetbrains.com/plugin/14893-ansible)
+- [HashiCorp Terraform / HCL](https://plugins.jetbrains.com/plugin/7808-hcl-language-support)
 
 ## Anpassungen
 
 - **Speicher/CPU-Limits**: `devfile.yaml` → `memoryLimit`/`cpuLimit`
-  (Standard: 6Gi/4 Cores, da IDE-Backend + Toolchain gemeinsam laufen)
+  (Standard: 8Gi/4 Cores, da Ultimate-Backend + Toolchain gemeinsam laufen)
 - **Zusätzliche Ansible-Collections**: im `.devspaces/Dockerfile` nach dem
   `pip3 install ansible` einen `ansible-galaxy collection install ...`-Aufruf
   ergänzen und das Image neu bauen lassen (Push auf `.devspaces/Dockerfile`)

@@ -22,7 +22,10 @@ components:
       # Terraform, git, ... already included) with Ansible baked in, so
       # nothing needs to be installed when the workspace starts.
       image: ghcr.io/mariusbertram/che-test-dev:latest
-      memoryLimit: 6Gi
+      # Sized for toolchain + a full JetBrains Gateway/Ultimate backend
+      # running in the same container (Community's Projector footprint was
+      # much smaller; Ultimate needs real headroom).
+      memoryLimit: 8Gi
       memoryRequest: 1Gi
       cpuLimit: '4'
       cpuRequest: '1'
