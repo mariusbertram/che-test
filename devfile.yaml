@@ -16,10 +16,12 @@ metadata:
 components:
   - name: tools
     container:
-      # Devfile-registry "Universal Developer Image": ships Go, Python3/pip,
-      # git and common CLI tooling out of the box. Ansible and Terraform are
-      # installed on first start by the setup-tools command below.
-      image: quay.io/devfile/universal-developer-image:ubi9-latest
+      # Custom image built from .devspaces/Dockerfile by
+      # .github/workflows/build-dev-image.yml (GitHub Actions -> GHCR).
+      # Extends the devfile "Universal Developer Image" (Go, Python3/pip,
+      # Terraform, git, ... already included) with Ansible baked in, so
+      # nothing needs to be installed when the workspace starts.
+      image: ghcr.io/mariusbertram/che-test-dev:latest
       memoryLimit: 6Gi
       memoryRequest: 1Gi
       cpuLimit: '4'
@@ -53,19 +55,15 @@ components:
         # --- Python / pip ---
         - name: PIP_DEFAULT_TIMEOUT
           value: '100'
-        # --- Terraform ---
-        # Pin a version, or leave empty to install the latest release.
-        - name: TERRAFORM_VERSION
-          value: '1.9.8'
 
 commands:
-  - id: setup-tools
+  - id: configure-proxy
     exec:
       component: tools
-      label: 'Configure proxy & install Ansible/Terraform'
+      label: 'Configure proxy for git/pip'
       workingDir: ${PROJECT_SOURCE}
-      commandLine: bash "${PROJECT_SOURCE}/.devspaces/setup-tools.sh"
+      commandLine: bash "${PROJECT_SOURCE}/.devspaces/configure-proxy.sh"
 
 events:
   postStart:
-    - setup-tools
+    - configure-proxy

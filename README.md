@@ -9,22 +9,36 @@ Unterstützung für **remote JetBrains-IDEs** (JetBrains Gateway).
 
 | Datei | Zweck |
 |---|---|
-| `devfile.yaml` | Workspace-Definition: Container-Image, Ressourcen, Proxy-Env-Variablen, Setup-Command |
-| `.devspaces/setup-tools.sh` | Läuft beim Workspace-Start (`postStart`): richtet Proxy für git/pip/go/terraform/ansible ein und installiert Ansible + Terraform |
-| `.che/che-editor.yaml` | Legt den Standard-Editor für dieses Repo fest (JetBrains IntelliJ IDEA, remote via Gateway) |
+| `devfile.yaml` | Workspace-Definition: Container-Image, Ressourcen, Proxy-Env-Variablen, postStart-Command |
+| `.devspaces/Dockerfile` | Custom Workspace-Image: UDI-Basis-Image + Ansible |
+| `.github/workflows/build-dev-image.yml` | Baut `.devspaces/Dockerfile` bei jeder Änderung automatisch und pusht nach GHCR |
+| `.devspaces/configure-proxy.sh` | Läuft beim Workspace-Start (`postStart`): richtet Proxy für git/pip ein |
+| `.che/che-editor.yaml` | Legt den Standard-Editor für dieses Repo fest (JetBrains IntelliJ IDEA Community, remote via Gateway) |
 
-## Workspace starten
+## Workspace-Image
 
-In der Dev Spaces Dashboard über **"Create Workspace"** die Git-URL dieses
-Repos angeben. Das `devfile.yaml` wird automatisch erkannt und verwendet.
+Alle Abhängigkeiten stecken fest im Container-Image, nichts wird beim
+Workspace-Start nachinstalliert:
 
-Basis-Image ist `quay.io/devfile/universal-developer-image:ubi9-latest`
-(enthält bereits Go, Python3/pip, git). Ansible und Terraform werden beim
-ersten Start automatisch installiert (`.devspaces/setup-tools.sh`, per
-`postStart`-Event). Bei persistentem Storage (Standard: per-workspace/per-user
-PVC unter `$HOME`) bleibt das nach einem Neustart erhalten; bei "ephemeral"
-Storage läuft die Installation bei jedem Start erneut – das Skript ist dafür
-idempotent (überspringt bereits vorhandene Tools).
+- Basis: `quay.io/devfile/universal-developer-image:ubi9-latest` – bringt
+  bereits **Go**, **Python3/pip**, **Terraform** und git mit.
+- `.devspaces/Dockerfile` ergänzt nur **Ansible** (das einzige fehlende Tool)
+  per `pip3 install ansible`.
+- `.github/workflows/build-dev-image.yml` baut das Image bei jeder Änderung
+  an `.devspaces/Dockerfile` automatisch und pusht es nach
+  `ghcr.io/mariusbertram/che-test-dev:latest` – dorthin zeigt `devfile.yaml`.
+
+**Einmalig nach dem ersten Build nötig:** Das GHCR-Package ist standardmäßig
+privat. Unter `github.com/mariusbertram?tab=packages` → Package
+`che-test-dev` → **Package settings** → **Change visibility** → *Public*
+setzen, sonst schlägt der Image-Pull im Workspace mit `ImagePullBackOff` fehl
+(alternativ: Image-Pull-Secret im OpenShift-Namespace hinterlegen).
+
+Um eine andere Terraform-Version als die im Basis-Image zu bekommen, im
+Dockerfile eine zusätzliche `RUN`-Zeile mit `curl`/`unzip` nach
+`releases.hashicorp.com` ergänzen, oder direkt bei
+`quay.io/devfile/universal-developer-image` prüfen, ob eine neuere UDI-Version
+bereits eine aktuellere Terraform-Version mitbringt.
 
 ## Proxy-Konfiguration
 
@@ -57,25 +71,34 @@ zusätzliche Konfiguration nötig, solange die Env-Variablen gesetzt sind.
 
 ## Remote JetBrains-IDE nutzen
 
-Es gibt zwei Wege:
+Es gibt zwei Wege – **wichtig:** nur einer davon deckt Go tatsächlich ab.
 
-### 1. Standard: IntelliJ IDEA Community (sofort einsatzbereit)
+### 1. Standard: IntelliJ IDEA Community (sofort einsatzbereit, kostenlos)
 
 `.che/che-editor.yaml` setzt `che-incubator/che-idea/latest` als Editor.
 Beim Öffnen des Workspace startet automatisch eine remote laufende
 IntelliJ IDEA Community, die per JetBrains Gateway von eurem lokalen Rechner
-aus verbunden wird (Gateway zeigt den Workspace als "Running IDE" an).
+aus verbunden wird.
 
-Für Go/Python/Ansible/Terraform in der IDE aus dem JetBrains Marketplace
-installieren:
-- **Go**: Go-Plugin
-- **Python**: Python Community Edition-Plugin
-- **Ansible**: "Ansible Support"-Plugin
-- **Terraform**: "HashiCorp Terraform / HCL"-Plugin
+**Plugins werden hier nicht über das Devfile vorinstalliert** – Eclipse Che
+hat das Feature für Nicht-VS-Code-Editoren wieder entfernt (nur
+`.vscode/extensions.json` funktioniert noch, und das nur für den che-code/VS
+Code-Editor). Plugins müssen einmalig manuell über
+**Settings → Plugins → Marketplace** in der IDE installiert werden; sie
+bleiben danach erhalten, solange der Workspace-Storage persistent ist
+(Standard: per-workspace/per-user PVC).
 
-### 2. Ultimate/Professional-Editionen (eigene JetBrains-Lizenz nötig)
+Empfohlene Marketplace-Plugins:
+- **Python**: [Python Community Edition](https://plugins.jetbrains.com/plugin/7322-python-community-edition) – funktioniert in Community
+- **Ansible**: [Ansible Support](https://plugins.jetbrains.com/plugin/15704-ansible-support) oder [Ansible](https://plugins.jetbrains.com/plugin/14893-ansible) – funktioniert in Community
+- **Terraform/HCL**: [HashiCorp Terraform / HCL](https://plugins.jetbrains.com/plugin/7808-hcl-language-support) – Kompatibilität mit Community auf der Plugin-Seite prüfen, teils Ultimate-only
+- **Go**: **kein offizielles Go-Plugin für IntelliJ IDEA Community** – der
+  JetBrains-Go-Support ist exklusiv an GoLand bzw. IDEA Ultimate gebunden.
+  Für Go-Entwicklung ist Weg 2 notwendig.
 
-Für volle Sprach-Unterstützung ohne Marketplace-Plugins (z. B. IntelliJ IDEA
+### 2. Ultimate/Professional-Editionen inkl. Go (eigene JetBrains-Lizenz nötig)
+
+Für vollständige Sprach-Unterstützung inklusive Go (z. B. IntelliJ IDEA
 Ultimate mit nativer Go-, Python-, Ansible- und Terraform-Integration, oder
 GoLand/PyCharm Professional direkt):
 
@@ -90,14 +113,19 @@ GoLand/PyCharm Professional direkt):
    im Workspace; über Gateway verbindet sich lokal ein Thin-Client.
 
 Eine gültige JetBrains-Lizenz für die gewählte Ultimate/Professional-IDE ist
-dafür Voraussetzung.
+Voraussetzung. Auch hier werden zusätzliche Plugins (Ansible, Terraform/HCL)
+einmalig manuell über den Marketplace installiert; Go und Python sind in
+Ultimate/GoLand/PyCharm bereits eingebaut.
+
+**Empfehlung für euren Stack (Go + Python + Ansible + Terraform):** IntelliJ
+IDEA Ultimate über Weg 2 – deckt alle vier Sprachen in einer IDE ab.
 
 ## Anpassungen
 
 - **Speicher/CPU-Limits**: `devfile.yaml` → `memoryLimit`/`cpuLimit`
   (Standard: 6Gi/4 Cores, da IDE-Backend + Toolchain gemeinsam laufen)
-- **Terraform-Version pinnen**: `TERRAFORM_VERSION`-Env-Var in `devfile.yaml`
-  (leer lassen = jeweils aktuelle Version wird beim Start ermittelt)
-- **Zusätzliche Ansible-Collections**: `requirements.yml` im Repo anlegen und
-  in `.devspaces/setup-tools.sh` einen `ansible-galaxy collection install -r
-  requirements.yml`-Aufruf ergänzen
+- **Zusätzliche Ansible-Collections**: im `.devspaces/Dockerfile` nach dem
+  `pip3 install ansible` einen `ansible-galaxy collection install ...`-Aufruf
+  ergänzen und das Image neu bauen lassen (Push auf `.devspaces/Dockerfile`)
+- **Weitere Tools**: analog im `.devspaces/Dockerfile` per `RUN` ergänzen,
+  statt zur Laufzeit zu installieren
